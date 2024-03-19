@@ -1,4 +1,4 @@
-﻿/*
+/*
  * 由SharpDevelop创建。
  * 用户： CaptGyrfalcon
  * 日期: 2022/10/2
@@ -41,15 +41,15 @@ namespace FileAutoSort
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             //client.DefaultRequestHeaders.Add("Content-Type", "application/json");
             //不要乱动
-            string clientID = "";
-            string clientSecret = "";
-            //考虑到实际情况，发布的时候记得把clientID和clientSecret直接带上...
+            string clientID;
+            string clientSecret;
             clientID = Console.ReadLine();
             clientSecret = Console.ReadLine();
+            //考虑到实际情况，发布的时候记得把clientID和clientSecret直接带上...
             var response = await client.PostAsync("https://aip.baidubce.com/oauth/2.0/token?client_id=" + clientID + "&client_secret=" + clientSecret + "&grant_type=client_credentials", content);
             var responseString = await response.Content.ReadAsStringAsync();
             var jsonNode = JsonSerializer.Deserialize<JsonObject>(responseString);
-            
+
             //access token
             string token = jsonNode["access_token"].ToString();
             Console.WriteLine("Access Token，请勿将其泄露给他人");
@@ -66,11 +66,11 @@ namespace FileAutoSort
 
             //考虑到不同设备的文件命名格式不同，需要对部分文件进行重命名
             string[] beforeFiles = Directory.GetFiles(currentFolderPath, "*.jpg");
-            foreach(string beforeFile in beforeFiles)
+            foreach (string beforeFile in beforeFiles)
             {
-                
+
                 string beforeName = Path.GetFileNameWithoutExtension(beforeFile);
-                if(beforeName.Contains("_"))
+                if (beforeName.Contains("_"))
                 {
                     continue;
                 }
@@ -131,152 +131,171 @@ namespace FileAutoSort
             string[] newDirectories = Directory.GetDirectories(Environment.CurrentDirectory);
             List<string> existingDirectories = new List<string>();
             string outputLog = "";
-            foreach(string directory in newDirectories)
+            foreach (string directory in newDirectories)
             {
                 existingDirectories.Add(Path.GetFileNameWithoutExtension(directory));
             }
+            int currentIndex = 1;
+
+            //task begin
+            List<Task> tasks = new List<Task>();
+
+
 
             foreach (string directory in newDirectories)
             {
-                
-                if (!int.TryParse(Path.GetFileNameWithoutExtension(directory).Substring(0, 1), out _))
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+                Console.WriteLine("开始任务 " + currentIndex.ToString());
+                int taskId = currentIndex;
+                currentIndex++;
+                tasks.Add(
+                Task.Run(() =>
                 {
-                    continue;
-                }
-                string targetCardImage = "";
-                string targetVideo = "";
-                string[] newFiles = Directory.GetFiles(directory, "*.jpg");
-
-                if(newFiles.Length != 3)
-                {
-                    outputLog += "序号 " + Path.GetFileNameWithoutExtension(directory) + " 文件数量有误，请人工核实。\n";
-                    continue;
-                }
-                
-                if (newFiles.Length > 0)
-                {
-                    string oldest = newFiles[0];
-                    FileInfo oldestInfo = new FileInfo(oldest);
-                    foreach (string file in newFiles)
+                    if (!int.TryParse(Path.GetFileNameWithoutExtension(directory).Substring(0, 1), out _))
                     {
-                        FileInfo fileInfo = new FileInfo(file);
-                        if (string.Compare(file, oldest) < 0)
-                        {
-                            oldest = file;
-                            oldestInfo = fileInfo;
-                        }
+                        return;
                     }
-                    targetCardImage = oldest;
-                }
+                    string targetCardImage = "";
+                    string targetVideo = "";
+                    string[] newFiles = Directory.GetFiles(directory, "*.jpg");
 
-                string[] mpFile = Directory.GetFiles(directory, "*.mp4");
-                if (mpFile.Length > 0)
-                {
-                    targetVideo = mpFile[0];
-                }
-                if (!string.IsNullOrEmpty(targetCardImage))
-                {
-                    Console.WriteLine("Acquire Image Data: " + targetCardImage);
-                    string rawJsonData = GetCardInformation(targetCardImage, token);
-                    
-                    if(IsOK(rawJsonData))
+                    if (newFiles.Length != 3)
                     {
-                        string name = GetName(rawJsonData);
-                        while(true)
-                        {
-                            if(existingDirectories.Contains(name))
-                            {
-                                
-                                outputLog += name + "存在重名，请人工复核。\n";
-                                name += "a";
-                            }
-                            else
-                            {
-                                break;
-                            }
-                        }
-                        existingDirectories.Add(name);
-                        string id = GetNumber(rawJsonData);
-                        string parentDirectory = Directory.GetParent(directory).FullName;
-                        string newDirectory = Path.Combine(parentDirectory, name);
-                        Directory.Move(directory, newDirectory);
-                        string[] movedFiles = Directory.GetFiles(newDirectory, "*.jpg");
-                        string nearFile = "";
-                        string farFile = "";
-                        if(movedFiles.Length > 2)
-                        {
-                            Array.Sort(movedFiles);
-                            nearFile = movedFiles[1];
-                            farFile = movedFiles[2];
-                        }
-                        File.Move(movedFiles[0], Path.Combine(newDirectory, name + ".jpg"));
-                        string[] movedVideos = Directory.GetFiles(newDirectory, "*.mp4");
-                        if(movedVideos.Length > 0)
-                        {
-                            string videoPath = movedVideos[0];
-                            File.Move(videoPath, Path.Combine(newDirectory, name + ".mp4"));
-                        }
-                        string documentPath = Path.Combine(newDirectory, name + ".docx");
-                        File.Copy(Path.Combine(Environment.CurrentDirectory, "model.docx"), documentPath, true);
-                        //Document doc = new Document(documentPath);
-                        //doc.Range.Replace("$idcard", id);
-                        //doc.Range.Replace("$name", name);
-                        //NodeCollection nodes = doc.GetChildNodes(NodeType.Shape, true);
-                        //for (int i = 0; i < 2; i++)
-                        //{
-                        //    Shape shape = (Shape)nodes[i];
-                        //    string imagename = "";
-                        //    if (i == 0)
-                        //    {
-                        //        imagename = nearFile;
-                        //    }
-                        //    else
-                        //    {
-                        //        imagename = farFile;
-                        //    }
-                        //    shape.ImageData.SetImage(imagename);
-                        //}
-                        //doc.Save(documentPath);
-
-                        WordprocessingDocument doc = WordprocessingDocument.Open(documentPath, true);
-                        var body = doc.MainDocumentPart.Document.Body;
-
-                        foreach(var text in body.Descendants<Text>())
-                        {
-                            if(text.Text.Contains("$IDCard"))
-                            {
-                                text.Text = text.Text.Replace("$IDCard", id);
-                            }
-                            if(text.Text.Contains("$Name"))
-                            {
-                                text.Text = text.Text.Replace("$Name", name);
-                            }
-                        }
-                        //覆写近景远景图片
-                        ImagePart imagePart = (ImagePart)doc.MainDocumentPart.GetPartById("rId4");
-                        byte[] imageBytes = File.ReadAllBytes(nearFile);
-                        BinaryWriter writer = new BinaryWriter(imagePart.GetStream());
-                        writer.Write(imageBytes);
-                        writer.Close();
-
-                        ImagePart imagePart2 = (ImagePart)doc.MainDocumentPart.GetPartById("rId5");
-                        byte[] imageBytes2 = File.ReadAllBytes(farFile);
-                        BinaryWriter writer2 = new BinaryWriter(imagePart2.GetStream());
-                        writer2.Write(imageBytes2);
-                        writer2.Close();
-
-                        doc.Save();
-                        doc.Dispose();
-
-                    }
-                    else
-                    {
-                        outputLog += "序号 " + Path.GetFileNameWithoutExtension(directory) + " 身份证图片存在问题，请人工复核。\n";
+                        outputLog += "序号 " + Path.GetFileNameWithoutExtension(directory) + " 文件数量有误，请人工核实。\n";
+                        return;
                     }
 
-                }
+                    if (newFiles.Length > 0)
+                    {
+                        string oldest = newFiles[0];
+                        FileInfo oldestInfo = new FileInfo(oldest);
+                        foreach (string file in newFiles)
+                        {
+                            FileInfo fileInfo = new FileInfo(file);
+                            if (string.Compare(file, oldest) < 0)
+                            {
+                                oldest = file;
+                                oldestInfo = fileInfo;
+                            }
+                        }
+                        targetCardImage = oldest;
+                    }
+
+                    string[] mpFile = Directory.GetFiles(directory, "*.mp4");
+                    if (mpFile.Length > 0)
+                    {
+                        targetVideo = mpFile[0];
+                    }
+                    if (!string.IsNullOrEmpty(targetCardImage))
+                    {
+                        Console.WriteLine("Acquire Image Data: " + targetCardImage);
+                        string rawJsonData = GetCardInformation(targetCardImage, token);
+                        Console.WriteLine("Done with acquire Image Data: " + targetCardImage);
+                        if (IsOK(rawJsonData))
+                        {
+                            string name = GetName(rawJsonData);
+                            while (true)
+                            {
+                                if (existingDirectories.Contains(name))
+                                {
+
+                                    outputLog += name + "存在重名，请人工复核。\n";
+                                    name += "a";
+                                }
+                                else
+                                {
+                                    break;
+                                }
+                            }
+                            existingDirectories.Add(name);
+                            string id = GetNumber(rawJsonData);
+                            string parentDirectory = Directory.GetParent(directory).FullName;
+                            string newDirectory = Path.Combine(parentDirectory, name);
+                            Directory.Move(directory, newDirectory);
+                            string[] movedFiles = Directory.GetFiles(newDirectory, "*.jpg");
+                            string nearFile = "";
+                            string farFile = "";
+                            if (movedFiles.Length > 2)
+                            {
+                                Array.Sort(movedFiles);
+                                nearFile = movedFiles[1];
+                                farFile = movedFiles[2];
+                            }
+                            File.Move(movedFiles[0], Path.Combine(newDirectory, name + ".jpg"));
+                            string[] movedVideos = Directory.GetFiles(newDirectory, "*.mp4");
+                            if (movedVideos.Length > 0)
+                            {
+                                string videoPath = movedVideos[0];
+                                File.Move(videoPath, Path.Combine(newDirectory, name + ".mp4"));
+                            }
+                            string documentPath = Path.Combine(newDirectory, name + ".docx");
+                            File.Copy(Path.Combine(Environment.CurrentDirectory, "model.docx"), documentPath, true);
+                            //Document doc = new Document(documentPath);
+                            //doc.Range.Replace("$idcard", id);
+                            //doc.Range.Replace("$name", name);
+                            //NodeCollection nodes = doc.GetChildNodes(NodeType.Shape, true);
+                            //for (int i = 0; i < 2; i++)
+                            //{
+                            //    Shape shape = (Shape)nodes[i];
+                            //    string imagename = "";
+                            //    if (i == 0)
+                            //    {
+                            //        imagename = nearFile;
+                            //    }
+                            //    else
+                            //    {
+                            //        imagename = farFile;
+                            //    }
+                            //    shape.ImageData.SetImage(imagename);
+                            //}
+                            //doc.Save(documentPath);
+
+                            WordprocessingDocument doc = WordprocessingDocument.Open(documentPath, true);
+                            var body = doc.MainDocumentPart.Document.Body;
+
+                            foreach (var text in body.Descendants<Text>())
+                            {
+                                if (text.Text.Contains("$IDCard"))
+                                {
+                                    text.Text = text.Text.Replace("$IDCard", id);
+                                }
+                                if (text.Text.Contains("$Name"))
+                                {
+                                    text.Text = text.Text.Replace("$Name", name);
+                                }
+                            }
+                            //覆写近景远景图片
+                            ImagePart imagePart = (ImagePart)doc.MainDocumentPart.GetPartById("rId4");
+                            byte[] imageBytes = File.ReadAllBytes(nearFile);
+                            BinaryWriter writer = new BinaryWriter(imagePart.GetStream());
+                            writer.Write(imageBytes);
+                            writer.Close();
+
+                            ImagePart imagePart2 = (ImagePart)doc.MainDocumentPart.GetPartById("rId5");
+                            byte[] imageBytes2 = File.ReadAllBytes(farFile);
+                            BinaryWriter writer2 = new BinaryWriter(imagePart2.GetStream());
+                            writer2.Write(imageBytes2);
+                            writer2.Close();
+
+                            doc.Save();
+                            doc.Dispose();
+
+                        }
+                        else
+                        {
+                            outputLog += "序号 " + Path.GetFileNameWithoutExtension(directory) + " 身份证图片存在问题，请人工复核。\n";
+                        }
+                    }
+                }));
+
             }
-            if(string.IsNullOrWhiteSpace(outputLog) || string.IsNullOrEmpty(outputLog))
+            await Task.WhenAll(tasks);
+            //task end
+
+
+
+
+            if (string.IsNullOrWhiteSpace(outputLog) || string.IsNullOrEmpty(outputLog))
             {
                 outputLog = "不存在异常情况（如果存在代签，请人工挑拣复核）";
             }
@@ -353,7 +372,7 @@ namespace FileAutoSort
             return GetStatus(jsonString).Equals("normal");
         }
 
-      
+
 
 
     }
